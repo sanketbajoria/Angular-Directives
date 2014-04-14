@@ -1,0 +1,184 @@
+/*!
+ The MIT License (MIT) Copyright (c) 2014 Sanket Bajoria
+  
+ Permission is hereby granted, free of charge, to any person obtaining a copy
+ of this software and associated documentation files (the "Software"), to deal
+ in the Software without restriction, including without limitation the rights
+ to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+ copies of the Software, and to permit persons to whom the Software is
+ furnished to do so, subject to the following conditions: The above copyright
+ notice and this permission notice shall be included in all copies or
+ substantial portions of the Software. THE SOFTWARE IS PROVIDED "AS IS",
+ WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED
+ TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
+ NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE
+ FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
+ TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR
+ THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+ */
+
+(function(window, document) {
+
+
+// Config
+angular.module('draggable.config', []).value('draggable.config', {
+    debug : true
+});
+
+// Modules
+angular.module('draggable.directives', []);
+angular
+        .module('draggable', [ 'draggable.config', 'draggable.directives' ])
+        .directive('draggable', function($document, $window, $parse) {
+            function isNum(x) {
+                return angular.isNumber(x) && !isNaN(x);
+            }
+            function toNum(x) {
+                return isNaN(parseInt(x, 10)) ? 0 : parseInt(x, 10);
+            }
+            function setPos(obj, a1, a2) {
+                var s = {};
+                if (isNum(a1))
+                    s.left = a1 + 'px';
+                if (isNum(a2))
+                    s.top = a2 + 'px';
+                obj.css(s);
+                return obj;
+            }
+            function getPos(obj, absolute) {
+                var isRelative = (obj.css('position') == 'relative') && !absolute ? true : false, y = isRelative ? toNum(obj
+                        .css('top')) : obj[0].offsetTop, x = isRelative ? toNum(obj
+                        .css('left')) : obj[0].offsetLeft;
+                return {
+                x : x,
+                y : y
+                };
+            }
+            function normaliseEvent(e) {
+                if (e.targetTouches !== undefined) {
+                    return e.targetTouches.item(0);
+                } else if (e.originalEvent !== undefined && e.originalEvent.targetTouches !== undefined) {
+                    return e.originalEvent.targetTouches.item(0);
+                }
+                return e;
+            }
+            function getBound(bound, $element) {
+                var elem = bound || 'window';
+                if (elem == 'parent') {
+                    elem = $element.parent();
+                } else if (elem == 'document') {
+                    elem = $document;
+                } else if (elem == 'window') {
+                    elem = $window;
+                }
+                if (angular.isElement(elem)) {
+                    return [ elem[0].offsetLeft, elem[0].offsetTop, elem[0].offsetLeft + elem[0].offsetWidth - $element[0].offsetWidth, elem[0].offsetTop + elem[0].offsetHeight - $element[0].offsetHeight ];
+                } else if (angular.isArray(angular.fromJson(elem))) {
+                    return angular.fromJson(elem);
+                }
+            }
+            function normalisePos(diffPos, startPos, scope) {
+                var bound = scope.bound, currx = startPos.x + diffPos.x, curry = startPos.y + diffPos.y, diffx = 0, diffy = 0;
+                if (angular.isArray(bound)) {
+                    if (currx < bound[0])
+                        diffx = currx - bound[0];
+                    if (currx > bound[2])
+                        diffx = currx - bound[2];
+                    if (curry < bound[1])
+                        diffy = curry - bound[1];
+                    if (curry > bound[3])
+                        diffy = curry - bound[3];
+                }
+                diffPos.y = scope.axisY ? diffPos.y - diffy : 0;
+                diffPos.x = scope.axisX ? diffPos.x - diffx : 0;
+            }
+            function getShadow(obj) {
+                return angular.element("<div></div>").css({
+                width : obj[0].offsetWidth + 'px',
+                height : obj[0].offsetHeight + 'px'
+                }).addClass("shadow");
+            }
+            return {
+            restrict : "AC",
+            controller : function($scope, $attrs, $element) {
+                $scope.axisX = $scope.axisX || !$attrs.axis || $attrs.axis == 'x';
+                $scope.axisY = $scope.axisY || !$attrs.axis || $attrs.axis == 'y';
+                var pos = $element.css('position');
+                if (pos != 'absolute' && pos != 'relative')
+                    $element.css({
+                        position : 'relative'
+                    });
+                $scope.drag = true;
+                $scope.bound = $attrs.bound;
+                $scope.draggable = $attrs.draggable ? angular.element(document
+                        .querySelector($attrs.draggable)) : $element;
+            },
+
+            link : function(scope, element, attr) {
+                var endTypes = 'touchend touchcancel mouseup mouseleave', moveTypes = 'touchmove mousemove', startTypes = 'touchstart mousedown', startX = 0, startY = 0, startPos = null, absPos = null, diffPos = {
+                x : 0,
+                y : 0
+                }, shadow = null;
+
+                scope.draggable.bind(startTypes, function(event) {
+                    // Prevent default dragging of selected content
+                    if (!scope.drag)
+                        return;
+                    event.preventDefault();
+                    event = normaliseEvent(event);
+                    startX = event.pageX;
+                    startY = event.pageY;
+                    diffPos.x = diffPos.y = 0;
+                    startPos = getPos(element);
+                    absPos = getPos(element, true);
+                    scope.bound = getBound(attr.bound, element);
+                    $document.bind(moveTypes, dragStart);
+                    $document.bind(endTypes, dragStop);
+                }).css({
+                    'cursor' : 'move'
+                });
+                function dragStart(event) {
+                    event.preventDefault();
+                    event = normaliseEvent(event);
+                    diffPos.x = event.pageX - startX;
+                    diffPos.y = event.pageY - startY;
+                    normalisePos(diffPos, absPos, scope);
+                    if (attr.helper) {
+                        if (shadow === null) {
+                            shadow = (attr.helper == 'clone') ? getShadow(element) : attr
+                                    .helper();
+                            element.after(shadow);
+                        }
+                        setPos(shadow, absPos.x + diffPos.x, absPos.y + diffPos.y)
+                                .css({
+                                    display : 'block'
+                                });
+                    } else {
+                        setPos(element, startPos.x + diffPos.x, startPos.y + diffPos.y);
+                    }
+                }
+                function dragStop() {
+                    setPos(element, startPos.x + diffPos.x, startPos.y + diffPos.y);
+                    if (attr.onDragged) {
+                        var fn = $parse(attr.onDragged);
+                        scope.$apply(function() {
+                            fn(scope, {
+                                $Pos : diffPos
+                            });
+                        });
+                    }
+                    if (attr.helper && shadow)
+                        shadow.css({
+                            display : 'none'
+                        });
+                    angular.forEach(moveTypes.split(" "), function(val) {
+                        $document.unbind(val, dragStart);
+                    });
+                    angular.forEach(endTypes.split(" "), function(val) {
+                        $document.unbind(val, dragStop);
+                    });
+                }
+            }
+            };
+        });
+})(window, document);
