@@ -27,10 +27,6 @@ describe('draggable', function() {
     
 
     
-    it('should load directives module', function() {
-        expect(hasModule('draggable.directives')).toBeTruthy();
-    });
-    
 
     
 
