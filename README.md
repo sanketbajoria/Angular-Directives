@@ -1,4 +1,4 @@
-Angular-UI-Directives
+Angular-Directives
 =====================
 Native Directives based upon angular js. It won't have any dependency upon any of the other library.
 
